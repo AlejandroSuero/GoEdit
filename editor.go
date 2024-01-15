@@ -2,6 +2,7 @@ package main
 
 import "os"
 import "fmt"
+import "bufio"
 
 import "github.com/nsf/termbox-go"
 import "github.com/mattn/go-runewidth"
@@ -9,9 +10,32 @@ import "github.com/mattn/go-runewidth"
 var ROWS, COLS int
 var offsetX, offsetY int
 
-var text_buffer = [][]rune{
-	{'\t', 'h', 'e', 'l', 'l', 'o'},
-	{'w', 'o', 'r', 'l', 'd'},
+var source_file string
+
+var text_buffer = [][]rune{}
+
+func read_file(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		source_file = filename
+		text_buffer = append(text_buffer, []rune{})
+		return
+	}
+	defer file.Close()
+	sc := bufio.NewScanner(file)
+	line_number := 0
+
+	for sc.Scan() {
+		line := sc.Text()
+		text_buffer = append(text_buffer, []rune{})
+		for i := 0; i < len(line); i++ {
+			text_buffer[line_number] = append(text_buffer[line_number], rune(line[i]))
+		}
+		line_number++
+	}
+	if line_number == 0 {
+		text_buffer = append(text_buffer, []rune{})
+	}
 }
 
 func print_message(col int, row int, fg termbox.Attribute, bg termbox.Attribute, message string) {
@@ -47,12 +71,21 @@ func run_editor() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+
+	if len(os.Args) > 1 {
+		source_file = os.Args[1]
+		read_file(source_file)
+	} else {
+		source_file = "out.txt"
+		text_buffer = append(text_buffer, []rune{})
+	}
+
 	for {
 		COLS, ROWS = termbox.Size()
 		ROWS--
-    if COLS < 80 {
-      COLS = 80
-    }
+		if COLS < 80 {
+			COLS = 80
+		}
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		display_text_buffer()
 		termbox.Flush()
