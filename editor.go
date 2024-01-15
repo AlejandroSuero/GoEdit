@@ -1,18 +1,28 @@
 package main
 
-import "os"
-import "fmt"
-import "bufio"
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
 
-import "github.com/nsf/termbox-go"
-import "github.com/mattn/go-runewidth"
+	"github.com/mattn/go-runewidth"
+	"github.com/nsf/termbox-go"
+)
 
+var mode int
 var ROWS, COLS int
-var offsetX, offsetY int
+var offset_row, offset_col int
+var current_row, current_col int
 
 var source_file string
 
 var text_buffer = [][]rune{}
+var undo_buffer = [][]rune{}
+var copy_buffer = []rune{}
+var modified bool
 
 func read_file(filename string) {
 	file, err := os.Open(filename)
@@ -45,24 +55,65 @@ func print_message(col int, row int, fg termbox.Attribute, bg termbox.Attribute,
 	}
 }
 
+func display_line_number(line_number int) {
+	termbox.SetCell(0, line_number, rune(strconv.Itoa(line_number + 1)[0]), termbox.ColorBlack, termbox.ColorDefault)
+}
+
 func display_text_buffer() {
 	var row, col int
 	for row = 0; row < ROWS; row++ {
-		text_buffer_row := row + offsetY
+		text_buffer_row := row + offset_col
 		for col = 0; col < COLS; col++ {
-			text_buffer_col := col + offsetX
+			text_buffer_col := col + offset_row
 			if text_buffer_row >= 0 && text_buffer_row < len(text_buffer) && text_buffer_col < len(text_buffer[text_buffer_row]) {
 				if text_buffer[text_buffer_row][text_buffer_col] != '\t' {
-					termbox.SetChar(col, row, text_buffer[text_buffer_row][text_buffer_col])
+					termbox.SetChar(col+2, row, text_buffer[text_buffer_row][text_buffer_col])
 				} else {
-					termbox.SetCell(col, row, rune(' '), termbox.ColorDefault, termbox.ColorGreen)
+					termbox.SetCell(col+2, row, rune(' '), termbox.ColorDefault, termbox.ColorGreen)
 				}
-			} else if row+offsetY > len(text_buffer) {
-				termbox.SetCell(0, row, rune('~'), termbox.ColorBlue, termbox.ColorDefault)
 			}
+		}
+		if row+offset_row > len(text_buffer) {
+			termbox.SetCell(0, row, rune('~'), termbox.ColorBlue, termbox.ColorDefault)
 		}
 		termbox.SetChar(col, row, rune('\n'))
 	}
+}
+
+func display_status_bar() {
+	var mode_status string
+	var file_status string
+	var copy_status string
+	var undo_status string
+	var cursor_status string
+	var modified_status string
+	var MAX_FILE_LENGTH int = 20
+	if mode > 0 {
+		mode_status = " INSERT: "
+	} else {
+		mode_status = " NORMAL: "
+	}
+	filename_length := len(source_file)
+	if filename_length > MAX_FILE_LENGTH {
+		filename_length = MAX_FILE_LENGTH
+	}
+	if modified {
+		modified_status = "[*]"
+	} else {
+		modified_status = ""
+	}
+	file_status = source_file[:filename_length] + modified_status + " - " + strconv.Itoa(len(text_buffer)) + " lines"
+	cursor_status = " " + strconv.Itoa(current_row+1) + ":" + strconv.Itoa(current_col+1) + " "
+	if len(copy_buffer) > 0 {
+		copy_status = "[Copy]"
+	}
+	if len(undo_buffer) > 0 {
+		undo_status = "[Undo]"
+	}
+	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
+	spaces := strings.Repeat(" ", COLS-used_space)
+	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
+	print_message(0, ROWS, termbox.ColorBlack, termbox.ColorCyan, message)
 }
 
 func run_editor() {
@@ -74,6 +125,12 @@ func run_editor() {
 
 	if len(os.Args) > 1 {
 		source_file = os.Args[1]
+		// remove autocomplete chars
+		if runtime.GOOS == "windows" {
+			source_file = strings.Replace(os.Args[1], ".\\", "", 1)
+		} else {
+			source_file = strings.Replace(os.Args[1], "./", "", 1)
+		}
 		read_file(source_file)
 	} else {
 		source_file = "out.txt"
@@ -83,14 +140,12 @@ func run_editor() {
 	for {
 		COLS, ROWS = termbox.Size()
 		ROWS--
-		if COLS < 80 {
-			COLS = 80
-		}
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		display_text_buffer()
+		display_status_bar()
 		termbox.Flush()
 		event := termbox.PollEvent()
-		if event.Type == termbox.EventKey && event.Key == termbox.KeyEsc {
+		if event.Type == termbox.EventKey && (event.Key == termbox.KeyEsc || event.Key == termbox.KeyCtrlQ) {
 			termbox.Close()
 			break
 		}
