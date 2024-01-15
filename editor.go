@@ -24,7 +24,7 @@ var undo_buffer = [][]rune{}
 var copy_buffer = []rune{}
 var modified bool
 
-func read_file(filename string) {
+func readFile(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
 		source_file = filename
@@ -48,18 +48,18 @@ func read_file(filename string) {
 	}
 }
 
-func print_message(col int, row int, fg termbox.Attribute, bg termbox.Attribute, message string) {
+func printMessage(col int, row int, fg termbox.Attribute, bg termbox.Attribute, message string) {
 	for _, ch := range message {
 		termbox.SetCell(col, row, ch, fg, bg)
 		col += runewidth.RuneWidth(ch)
 	}
 }
 
-func display_line_number(line_number int) {
+func displayLineNumber(line_number int) {
 	termbox.SetCell(0, line_number, rune(strconv.Itoa(line_number + 1)[0]), termbox.ColorBlack, termbox.ColorDefault)
 }
 
-func display_text_buffer() {
+func displayTextBuffer() {
 	var row, col int
 	for row = 0; row < ROWS; row++ {
 		text_buffer_row := row + offset_col
@@ -80,14 +80,14 @@ func display_text_buffer() {
 	}
 }
 
-func display_status_bar() {
+func displayStatusBar() {
 	var mode_status string
 	var file_status string
 	var copy_status string
 	var undo_status string
 	var cursor_status string
 	var modified_status string
-	var MAX_FILE_LENGTH int = 20
+	const MAX_FILE_LENGTH int = 20
 	if mode > 0 {
 		mode_status = " INSERT: "
 	} else {
@@ -98,7 +98,7 @@ func display_status_bar() {
 		filename_length = MAX_FILE_LENGTH
 	}
 	if modified {
-		modified_status = "[*]"
+		modified_status = " [*]"
 	} else {
 		modified_status = ""
 	}
@@ -113,10 +113,10 @@ func display_status_bar() {
 	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
 	spaces := strings.Repeat(" ", COLS-used_space)
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
-	print_message(0, ROWS, termbox.ColorBlack, termbox.ColorCyan, message)
+	printMessage(0, ROWS, termbox.ColorBlack, termbox.ColorCyan, message)
 }
 
-func run_editor() {
+func goEdit() {
 	err := termbox.Init()
 	if err != nil {
 		fmt.Println(err)
@@ -131,7 +131,7 @@ func run_editor() {
 		} else {
 			source_file = strings.Replace(os.Args[1], "./", "", 1)
 		}
-		read_file(source_file)
+		readFile(source_file)
 	} else {
 		source_file = "out.txt"
 		text_buffer = append(text_buffer, []rune{})
@@ -141,8 +141,8 @@ func run_editor() {
 		COLS, ROWS = termbox.Size()
 		ROWS--
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-		display_text_buffer()
-		display_status_bar()
+		displayTextBuffer()
+		displayStatusBar()
 		termbox.Flush()
 		event := termbox.PollEvent()
 		if event.Type == termbox.EventKey && (event.Key == termbox.KeyEsc || event.Key == termbox.KeyCtrlQ) {
@@ -153,5 +153,5 @@ func run_editor() {
 }
 
 func main() {
-	run_editor()
+	goEdit()
 }
