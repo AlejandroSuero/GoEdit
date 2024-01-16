@@ -20,6 +20,7 @@ var prev_row, prev_col int
 
 var source_file string
 
+var error_buffer []string
 var text_buffer = [][]rune{}
 var undo_buffer = [][]rune{}
 var copy_buffer = []rune{}
@@ -59,8 +60,13 @@ func printMessage(col int, row int, fg termbox.Attribute, bg termbox.Attribute, 
 	}
 }
 
-func displayLineNumber(line_number int) {
-	termbox.SetCell(0, line_number, rune(strconv.Itoa(line_number + 1)[0]), termbox.ColorBlack, termbox.ColorDefault)
+func displayLineNumber() {
+	for line := 0; line < len(text_buffer); line++ {
+		line_str := strconv.Itoa(line + 1)
+		for col, ch := range line_str {
+			termbox.SetCell(col, line, ch, termbox.ColorBlack, termbox.ColorDefault)
+		}
+	}
 }
 
 func scrollTextBuffer() {
@@ -178,6 +184,24 @@ func displayTextBuffer() {
 	}
 }
 
+func displayErrorMessage(error_message string) {
+	printMessage(0, ROWS, termbox.ColorRed, termbox.ColorDefault, error_message)
+}
+
+func clearErrorMessage() {
+	var new_error_buffer []string
+	error_buffer = new_error_buffer
+	displayErrorMessage("")
+}
+
+func displayErrors() {
+	if error_buffer != nil {
+		displayErrorMessage(error_buffer[len(error_buffer)-1])
+	} else {
+		clearErrorMessage()
+	}
+}
+
 func displayStatusBar() {
 	var mode_status string
 	var file_status string
@@ -211,7 +235,7 @@ func displayStatusBar() {
 	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
 	spaces := strings.Repeat(" ", COLS-used_space)
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
-	printMessage(0, ROWS, termbox.ColorBlack, termbox.ColorBlue, message)
+	printMessage(0, ROWS-1, termbox.ColorBlack, termbox.ColorBlue, message)
 }
 
 func getKey() termbox.Event {
@@ -237,9 +261,21 @@ func processKeyPress() {
 			modified = true
 		} else {
 			switch ch {
+			case '!':
+				key_event = getKey()
+				if key_event.Ch == 'Q' {
+					error_buffer = nil
+					termbox.Close()
+					os.Exit(0)
+				}
 			case 'Q':
-				termbox.Close()
-				os.Exit(0)
+				if !modified {
+					error_buffer = nil
+					termbox.Close()
+					os.Exit(0)
+				} else {
+					error_buffer = append(error_buffer, "ERROR: write changes before leaving or force quit <!Q>")
+				}
 			case 'i':
 				if current_col != 0 {
 					current_col--
@@ -273,10 +309,17 @@ func processKeyPress() {
 				moveCursor("bottom")
 			case 'o':
 				insertNewLine(false)
+				modified = true
 				mode = 1
 			case 'O':
 				insertNewLine(true)
+				modified = true
 				mode = 1
+			case 'w':
+				writeFile(source_file)
+				if error_buffer != nil {
+					error_buffer = nil
+				}
 			}
 		}
 	} else {
@@ -285,6 +328,8 @@ func processKeyPress() {
 			if mode == 1 {
 				insertLine()
 				modified = true
+			} else {
+				moveCursor("down")
 			}
 		case termbox.KeyBackspace:
 			deleteCharacter()
@@ -393,6 +438,28 @@ func insertNewLine(reverse bool) {
 	text_buffer = new_text_buffer
 }
 
+func writeFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	for row, line := range text_buffer {
+		new_line := "\n"
+		if row == len(text_buffer)-1 {
+			new_line = ""
+		}
+		write_line := string(line) + new_line
+		_, err = writer.WriteString(write_line)
+		if err != nil {
+			fmt.Println("Error: ", err)
+		}
+		writer.Flush()
+		modified = false
+	}
+}
+
 func displayWelcomePage(display bool) {
 	if display {
 		message := "GoEdit - A minimalistic text editor written in GoLang"
@@ -429,8 +496,10 @@ func goEdit() {
 		termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
 		scrollTextBuffer()
 		displayTextBuffer()
+		// displayLineNumber()
 		displayWelcomePage(is_welcome_page)
 		displayStatusBar()
+		displayErrors()
 		termbox.SetCursor(current_col-offset_col, current_row-offset_row)
 		termbox.Flush()
 		processKeyPress()
