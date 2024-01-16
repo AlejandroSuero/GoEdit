@@ -81,7 +81,7 @@ func scrollTextBuffer() {
 /*
 Moves the cursor to the desired direction
 
-direction can be = "up" | "down" | "left" | "right" | "home" | "end" | "pageUp" | "pageDown"
+direction can be = "up" | "down" | "left" | "right" | "home" | "end" | "pageUp" | "pageDown" | "top" | "bottom"
 */
 func moveCursor(direction string) {
 	if cursor_changed {
@@ -124,22 +124,37 @@ func moveCursor(direction string) {
 		cursor_changed = true
 		current_col = len(text_buffer[current_row])
 	case "pageUp":
-		cursor_changed = true
+		cursor_changed = false
+		current_col = prev_col
 		if current_row-int(ROWS/2) > 0 {
 			current_row -= int(ROWS / 2)
 		} else {
 			current_row = 0
 		}
 	case "pageDown":
-		cursor_changed = true
+		cursor_changed = false
+		current_col = prev_col
 		if current_row+int(ROWS/2) < len(text_buffer)-1 {
 			current_row += int(ROWS / 2)
 		} else {
 			current_row = len(text_buffer) - 1
 		}
+	case "top":
+		cursor_changed = true
+		current_col = 0
+		current_row = 0
+	case "bottom":
+		cursor_changed = true
+		current_row = len(text_buffer) - 1
+		if len(text_buffer[current_row]) > 1 {
+			current_col = len(text_buffer[current_row])
+		} else {
+			current_col = 0
+		}
 	default:
 		termbox.Close()
-		panic("\tThe direction: \"" + direction + "\" is not a defined direction\n\tValid directions: \"up\", \"down\", \"left\", \"right\", \"left\", \"home\", \"end\", \"pageUp\" or \"pageDown\"\n\tPlease check your code.")
+		valid_directions := "\"up\", \"down\", \"left\", \"right\", \"left\", \"home\", \"end\", \"pageUp\", \"pageDown\", \"top\" or \"bottom\""
+		panic("\tThe direction: \"" + direction + "\" is not a defined direction\n\tValid directions: " + valid_directions + "\n\tPlease check your code.")
 	}
 }
 
@@ -215,12 +230,69 @@ func processKeyPress() {
 	key := key_event.Key
 	ch := key_event.Ch
 	if key == termbox.KeyEsc || key == termbox.KeyCtrlQ {
-		termbox.Close()
-		os.Exit(0)
+		mode = 0
 	} else if ch != 0 {
-		// Character handler
+		if mode == 1 {
+			insertCharacter(key_event)
+			modified = true
+		} else {
+			switch ch {
+			case 'Q':
+				termbox.Close()
+				os.Exit(0)
+			case 'i':
+				if current_col != 0 {
+					current_col--
+				}
+				mode = 1
+			case 'I':
+				moveCursor("home")
+				mode = 1
+			case 'a':
+				if current_col < len(text_buffer[current_row]) {
+					current_col++
+				}
+				mode = 1
+			case 'A':
+				moveCursor("end")
+				mode = 1
+			case 'j':
+				moveCursor("down")
+			case 'k':
+				moveCursor("up")
+			case 'l':
+				moveCursor("right")
+			case 'h':
+				moveCursor("left")
+			case 'g':
+				key_event = getKey()
+				if key_event.Ch == 'g' {
+					moveCursor("top")
+				}
+			case 'G':
+				moveCursor("bottom")
+			}
+		}
 	} else {
 		switch key {
+		case termbox.KeyBackspace:
+			deleteCharacter()
+			modified = true
+		case termbox.KeyBackspace2:
+			deleteCharacter()
+			modified = true
+		case termbox.KeyTab:
+			if mode == 1 {
+				for i := 0; i < 2; i++ {
+					insertCharacter(key_event)
+				}
+				modified = true
+			}
+		case termbox.KeySpace:
+			if mode == 1 {
+				insertCharacter(key_event)
+				modified = true
+			}
 		case termbox.KeyHome:
 			moveCursor("home")
 		case termbox.KeyEnd:
@@ -241,6 +313,45 @@ func processKeyPress() {
 		if current_col > len(text_buffer[current_row]) {
 			current_col = len(text_buffer[current_row])
 		}
+	}
+}
+
+func insertCharacter(event termbox.Event) {
+	insert_rune := make([]rune, len(text_buffer[current_row])+1)
+	copy(insert_rune[:current_col], text_buffer[current_row][:current_col])
+	if event.Key == termbox.KeySpace {
+		insert_rune[current_col] = rune(' ')
+	} else if event.Key == termbox.KeyTab {
+		// TODO: insert tab or spaces depending on preferences
+		insert_rune[current_col] = rune('\t')
+	} else {
+		insert_rune[current_col] = rune(event.Ch)
+	}
+	copy(insert_rune[current_col+1:], text_buffer[current_row][current_col:])
+	text_buffer[current_row] = insert_rune
+	current_col++
+}
+
+func deleteCharacter() {
+	if current_col > 0 {
+		current_col--
+		delete_line := make([]rune, len(text_buffer[current_row])-1)
+		copy(delete_line[:current_col], text_buffer[current_row][:current_col])
+		copy(delete_line[current_col:], text_buffer[current_row][current_col+1:])
+		text_buffer[current_row] = delete_line
+	} else if current_row > 0 {
+		append_line := make([]rune, len(text_buffer[current_row]))
+		copy(append_line, text_buffer[current_row][current_col:])
+		new_text_buffer := make([][]rune, len(text_buffer)-1)
+		copy(new_text_buffer[:current_row], text_buffer[:current_row])
+		copy(new_text_buffer[current_row:], text_buffer[current_row+1:])
+		text_buffer = new_text_buffer
+		current_row--
+		current_col = len(text_buffer[current_row])
+		insert_line := make([]rune, len(text_buffer[current_row])+len(append_line))
+		copy(insert_line[:len(text_buffer[current_row])], text_buffer[current_row])
+		copy(insert_line[len(text_buffer[current_row]):], append_line)
+		text_buffer[current_row] = insert_line
 	}
 }
 
