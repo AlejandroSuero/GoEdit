@@ -271,10 +271,21 @@ func processKeyPress() {
 				}
 			case 'G':
 				moveCursor("bottom")
+			case 'o':
+				insertNewLine(false)
+				mode = 1
+			case 'O':
+				insertNewLine(true)
+				mode = 1
 			}
 		}
 	} else {
 		switch key {
+		case termbox.KeyEnter:
+			if mode == 1 {
+				insertLine()
+				modified = true
+			}
 		case termbox.KeyBackspace:
 			deleteCharacter()
 			modified = true
@@ -353,6 +364,33 @@ func deleteCharacter() {
 		copy(insert_line[len(text_buffer[current_row]):], append_line)
 		text_buffer[current_row] = insert_line
 	}
+}
+
+func insertLine() {
+	right_line := make([]rune, len(text_buffer[current_row][current_col:]))
+	copy(right_line, text_buffer[current_row][current_col:])
+	left_line := make([]rune, len(text_buffer[current_row][:current_col]))
+	copy(left_line, text_buffer[current_row][:current_col])
+	text_buffer[current_row] = left_line
+	current_row++
+	current_col = 0
+	new_text_buffer := make([][]rune, len(text_buffer)+1)
+	copy(new_text_buffer, text_buffer[:current_row])
+	new_text_buffer[current_row] = right_line
+	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
+	text_buffer = new_text_buffer
+}
+
+func insertNewLine(reverse bool) {
+	if !reverse {
+		current_row++
+	}
+	current_col = 0
+	new_text_buffer := make([][]rune, len(text_buffer)+1)
+	copy(new_text_buffer, text_buffer[:current_row])
+	new_text_buffer[current_row] = []rune{' '}
+	copy(new_text_buffer[current_row+1:], text_buffer[current_row:])
+	text_buffer = new_text_buffer
 }
 
 func displayWelcomePage(display bool) {
