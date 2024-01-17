@@ -174,7 +174,7 @@ func displayTextBuffer() {
 				if text_buffer[text_buffer_row][text_buffer_col] != '\t' {
 					termbox.SetChar(col, row, text_buffer[text_buffer_row][text_buffer_col])
 				} else {
-					termbox.SetCell(col, row, rune(' '), termbox.ColorDefault, termbox.ColorGreen)
+					termbox.SetCell(col, row, rune(' '), termbox.ColorDefault, termbox.ColorDefault)
 				}
 			} else if row+offset_row > len(text_buffer)-1 {
 				termbox.SetCell(0, row, rune('~'), termbox.ColorBlue, termbox.ColorDefault)
@@ -185,21 +185,11 @@ func displayTextBuffer() {
 }
 
 func displayErrorMessage(error_message string) {
-	printMessage(0, ROWS, termbox.ColorRed, termbox.ColorDefault, error_message)
+	error_buffer = append(error_buffer, error_message)
 }
 
 func clearErrorMessage() {
-	var new_error_buffer []string
-	error_buffer = new_error_buffer
-	displayErrorMessage("")
-}
-
-func displayErrors() {
-	if error_buffer != nil {
-		displayErrorMessage(error_buffer[len(error_buffer)-1])
-	} else {
-		clearErrorMessage()
-	}
+	error_buffer = nil
 }
 
 func displayStatusBar() {
@@ -220,7 +210,7 @@ func displayStatusBar() {
 		filename_length = MAX_FILE_LENGTH
 	}
 	if modified {
-		modified_status = " [*]"
+		modified_status = " [+]"
 	} else {
 		modified_status = ""
 	}
@@ -235,7 +225,13 @@ func displayStatusBar() {
 	used_space := len(mode_status) + len(file_status) + len(cursor_status) + len(copy_status) + len(undo_status)
 	spaces := strings.Repeat(" ", COLS-used_space)
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
-	printMessage(0, ROWS-1, termbox.ColorBlack, termbox.ColorBlue, message)
+	printMessage(0, ROWS, termbox.ColorBlack, termbox.ColorBlue, message)
+	if error_buffer != nil {
+		error_status := " [ " + error_buffer[len(error_buffer)-1] + " ] "
+		for i, ch := range error_status {
+			termbox.SetCell(int((COLS/2)-len(error_status)+used_space)+i, ROWS, ch, termbox.ColorRed, termbox.ColorDefault)
+		}
+	}
 }
 
 func getKey() termbox.Event {
@@ -270,11 +266,11 @@ func processKeyPress() {
 				}
 			case 'Q':
 				if !modified {
-					error_buffer = nil
+					clearErrorMessage()
 					termbox.Close()
 					os.Exit(0)
 				} else {
-					error_buffer = append(error_buffer, "ERROR: write changes before leaving or force quit <!Q>")
+					displayErrorMessage("ERROR: Write changes before quitting or force quit <!Q>")
 				}
 			case 'i':
 				if current_col != 0 {
@@ -499,7 +495,6 @@ func goEdit() {
 		// displayLineNumber()
 		displayWelcomePage(is_welcome_page)
 		displayStatusBar()
-		displayErrors()
 		termbox.SetCursor(current_col-offset_col, current_row-offset_row)
 		termbox.Flush()
 		processKeyPress()
