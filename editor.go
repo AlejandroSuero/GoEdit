@@ -17,6 +17,7 @@ var ROWS, COLS int
 var offset_row, offset_col int
 var current_row, current_col int
 var prev_row, prev_col int
+var command_positions = 1
 
 var source_file string
 
@@ -62,7 +63,7 @@ func printMessage(col int, row int, fg termbox.Attribute, bg termbox.Attribute, 
 
 func displayLineNumber() {
 	for line := 0; line < len(text_buffer); line++ {
-		line_str := strconv.Itoa(line + 1)
+		line_str := strconv.Itoa(line + 1 + offset_row)
 		for col, ch := range line_str {
 			termbox.SetCell(col, line, ch, termbox.ColorBlack, termbox.ColorDefault)
 		}
@@ -89,7 +90,7 @@ Moves the cursor to the desired direction
 
 direction can be = "up" | "down" | "left" | "right" | "home" | "end" | "pageUp" | "pageDown" | "top" | "bottom"
 */
-func moveCursor(direction string) {
+func moveCursor(direction string, positions int) {
 	if cursor_changed {
 		prev_col = current_col
 	}
@@ -97,20 +98,26 @@ func moveCursor(direction string) {
 	case "up":
 		cursor_changed = false
 		current_col = prev_col
-		if current_row != 0 {
-			current_row--
+		if current_row-positions >= 0 {
+			current_row -= positions
+		} else if current_row-positions < 0 {
+			current_row = 0
+			setErrorMessage("Careful the top line is not that far :)", 2)
 		}
 	case "down":
 		cursor_changed = false
 		current_col = prev_col
-		if current_row < len(text_buffer)-1 {
-			current_row++
+		if current_row+positions <= len(text_buffer)-1 {
+			current_row += positions
+		} else if current_row+positions > len(text_buffer)-1 {
+			current_row = len(text_buffer) - 1
+			setErrorMessage("Careful the bottom line is not that far :)", 2)
 		}
 	case "left":
 		cursor_changed = true
 		if current_col != 0 {
-			current_col--
-		} else if current_row > 0 {
+			current_col -= positions
+		} else if current_row-positions > 0 {
 			current_row--
 			current_col = len(text_buffer[current_row])
 		}
@@ -118,8 +125,8 @@ func moveCursor(direction string) {
 	case "right":
 		cursor_changed = true
 		if current_col < len(text_buffer[current_row]) {
-			current_col++
-		} else if current_row < len(text_buffer)-1 {
+			current_col += positions
+		} else if current_row+positions < len(text_buffer)-1 {
 			current_row++
 			current_col = 0
 		}
@@ -184,8 +191,51 @@ func displayTextBuffer() {
 	}
 }
 
-func displayErrorMessage(error_message string) {
+type ErrorLevels int
+
+const (
+	LOG = iota
+	ERROR
+	WARN
+)
+
+func setErrorMessage(error_message string, error_level ErrorLevels) {
+	switch error_level {
+	case 0:
+		error_message = " [LOG: " + error_message + "] "
+	case 1:
+		error_message = " [ERROR: " + error_message + "] "
+	case 2:
+		error_message = " [WARN: " + error_message + "] "
+	default:
+		break
+	}
 	error_buffer = append(error_buffer, error_message)
+}
+
+func getErrorMessage(index int) string {
+	return error_buffer[index]
+}
+
+func getErrorColor(error_message string) (termbox.Attribute, termbox.Attribute) {
+	var fg termbox.Attribute
+	var bg termbox.Attribute
+	if error_buffer != nil {
+		switch string(error_message[2]) {
+		case "L":
+			fg = termbox.ColorBlack
+			bg = termbox.ColorBlue
+		case "E":
+			fg = termbox.ColorRed
+			bg = termbox.ColorDefault
+		case "W":
+			fg = termbox.ColorYellow
+			bg = termbox.ColorDefault
+		}
+	} else {
+		panic("Error buffer is empty, unable to to display error messages")
+	}
+	return fg, bg
 }
 
 func clearErrorMessage() {
@@ -227,9 +277,10 @@ func displayStatusBar() {
 	message := mode_status + file_status + copy_status + undo_status + spaces + cursor_status
 	printMessage(0, ROWS, termbox.ColorBlack, termbox.ColorBlue, message)
 	if error_buffer != nil {
-		error_status := " [ " + error_buffer[len(error_buffer)-1] + " ] "
+		error_status := getErrorMessage(len(error_buffer) - 1)
+		fg, bg := getErrorColor(error_status)
 		for i, ch := range error_status {
-			termbox.SetCell(int((COLS/2)-len(error_status)+used_space)+i, ROWS, ch, termbox.ColorRed, termbox.ColorDefault)
+			termbox.SetCell(int((COLS/2)-len(error_status)+used_space)+i, ROWS, ch, fg, bg)
 		}
 	}
 }
@@ -245,6 +296,49 @@ func getKey() termbox.Event {
 	return key_event
 }
 
+func isDigit(ch rune) bool {
+	if ch < '0' || ch > '9' {
+		return false
+	}
+	return true
+}
+
+func commandMotions(ch rune) {
+	switch ch {
+	case 'j':
+		moveCursor("down", command_positions)
+		command_positions = 1
+	case 'k':
+		moveCursor("up", command_positions)
+		command_positions = 1
+	case 'l':
+		moveCursor("right", command_positions)
+		command_positions = 1
+	case 'h':
+		moveCursor("left", command_positions)
+		command_positions = 1
+	}
+}
+
+func commandMotionsArrows(key termbox.Key) {
+	switch key {
+	case termbox.KeyArrowDown:
+		moveCursor("down", command_positions)
+		command_positions = 1
+	case termbox.KeyArrowUp:
+		moveCursor("up", command_positions)
+		command_positions = 1
+	case termbox.KeyArrowLeft:
+		moveCursor("left", command_positions)
+		command_positions = 1
+	case termbox.KeyArrowRight:
+		moveCursor("right", command_positions)
+		command_positions = 1
+	}
+}
+
+var str_positions strings.Builder
+
 func processKeyPress() {
 	key_event := getKey()
 	key := key_event.Key
@@ -256,76 +350,91 @@ func processKeyPress() {
 			insertCharacter(key_event)
 			modified = true
 		} else {
-			switch ch {
-			case '!':
-				key_event = getKey()
-				if key_event.Ch == 'Q' {
-					error_buffer = nil
-					termbox.Close()
-					os.Exit(0)
-				}
-			case 'Q':
-				if !modified {
-					clearErrorMessage()
-					termbox.Close()
-					os.Exit(0)
+			if isDigit(ch) {
+				_, err := str_positions.WriteString(string(ch))
+				if err == nil {
+					positions, err2 := strconv.Atoi(str_positions.String())
+					if err2 == nil {
+						command_positions = positions
+					} else {
+						termbox.Close()
+						panic(err2)
+					}
 				} else {
-					displayErrorMessage("ERROR: Write changes before quitting or force quit <!Q>")
+					termbox.Close()
+					panic(err)
 				}
-			case 'i':
-				if current_col != 0 {
-					current_col--
+			} else {
+				if ch == 'j' || ch == 'k' || ch == 'l' || ch == 'h' {
+					commandMotions(ch)
+					str_positions.Reset()
 				}
-				mode = 1
-			case 'I':
-				moveCursor("home")
-				mode = 1
-			case 'a':
-				if current_col < len(text_buffer[current_row]) {
-					current_col++
-				}
-				mode = 1
-			case 'A':
-				moveCursor("end")
-				mode = 1
-			case 'j':
-				moveCursor("down")
-			case 'k':
-				moveCursor("up")
-			case 'l':
-				moveCursor("right")
-			case 'h':
-				moveCursor("left")
-			case 'g':
-				key_event = getKey()
-				if key_event.Ch == 'g' {
-					moveCursor("top")
-				}
-			case 'G':
-				moveCursor("bottom")
-			case 'o':
-				insertNewLine(false)
-				modified = true
-				mode = 1
-			case 'O':
-				insertNewLine(true)
-				modified = true
-				mode = 1
-			case 'w':
-				writeFile(source_file)
-				if error_buffer != nil {
-					error_buffer = nil
+				switch ch {
+				case '!':
+					key_event = getKey()
+					if key_event.Ch == 'Q' {
+						error_buffer = nil
+						termbox.Close()
+						os.Exit(0)
+					}
+				case 'Q':
+					if !modified {
+						clearErrorMessage()
+						termbox.Close()
+						os.Exit(0)
+					} else {
+						setErrorMessage("Write changes before quitting or force quit <!Q>", 2)
+					}
+				case 'i':
+					if current_col != 0 {
+						current_col--
+					}
+					mode = 1
+				case 'I':
+					moveCursor("home", 0)
+					mode = 1
+				case 'a':
+					if current_col < len(text_buffer[current_row]) {
+						current_col++
+					}
+					mode = 1
+				case 'A':
+					moveCursor("end", 0)
+					mode = 1
+				case 'g':
+					key_event = getKey()
+					if key_event.Ch == 'g' {
+						moveCursor("top", 0)
+					}
+				case 'G':
+					moveCursor("bottom", 0)
+				case 'o':
+					insertNewLine(false)
+					modified = true
+					mode = 1
+				case 'O':
+					insertNewLine(true)
+					modified = true
+					mode = 1
+				case 'w':
+					writeFile(source_file)
+					if error_buffer != nil {
+						error_buffer = nil
+					}
 				}
 			}
 		}
 	} else {
+		if key == termbox.KeyArrowDown || key == termbox.KeyArrowUp || key == termbox.KeyArrowLeft || key == termbox.KeyArrowRight {
+			commandMotionsArrows(key)
+		}
 		switch key {
 		case termbox.KeyEnter:
 			if mode == 1 {
 				insertLine()
 				modified = true
 			} else {
-				moveCursor("down")
+				moveCursor("down", 1)
 			}
 		case termbox.KeyBackspace:
 			deleteCharacter()
@@ -346,21 +455,13 @@ func processKeyPress() {
 				modified = true
 			}
 		case termbox.KeyHome:
-			moveCursor("home")
+			moveCursor("home", 0)
 		case termbox.KeyEnd:
-			moveCursor("end")
+			moveCursor("end", 0)
 		case termbox.KeyPgup:
-			moveCursor("pageUp")
+			moveCursor("pageUp", 0)
 		case termbox.KeyPgdn:
-			moveCursor("pageDown")
-		case termbox.KeyArrowDown:
-			moveCursor("down")
-		case termbox.KeyArrowUp:
-			moveCursor("up")
-		case termbox.KeyArrowLeft:
-			moveCursor("left")
-		case termbox.KeyArrowRight:
-			moveCursor("right")
+			moveCursor("pageDown", 0)
 		}
 		if current_col > len(text_buffer[current_row]) {
 			current_col = len(text_buffer[current_row])
