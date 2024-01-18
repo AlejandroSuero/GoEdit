@@ -6,6 +6,47 @@ a minimalistic API for text-based user interfaces.
 My objective is to create a simple text editor, like [vi](https://en.wikipedia.org/wiki/Vi_(text_editor)),
 with the base functionality
 
+Index:
+
+- [Installation](https://github.com/AlejandroSuero/GoEdit#installation)
+- [Supported commands](https://github.com/AlejandroSuero/GoEdit#supported-commands)
+
+## Installation
+
+To start using this editor, first thing you need is to install **Go** -> [golang's official site](https://go.dev/).
+
+Once **Go** is installed, go to your terminal clone this repository.
+
+```bash
+git clone https://github.com/AlejandroSuero/GoEdit
+```
+
+> Note: If you don't have git installed, go to -> [git's official site](https://git-scm.com/) or select at the top where it is a green button that says "Code ▼" and next "Download ZIP".
+
+Next, go into the directory where you have it cloned.
+
+```bash
+# This will initialize the project
+go init goedit
+
+# This will download the dependencies
+go mod tidy
+```
+
+Finally, you can build the project and start using it.
+
+```bash
+# For UNIX users
+go build -o goedit editor.go
+./goedit <path-to-the-file-or-leave-it-empty-for-a-welcome-message>
+
+# For Windows users
+go build -o goedit.exe editor.go
+.\goedit.exe <path-to-the-file-or-leave-it-empty-for-a-welcome-message>
+```
+
+For now, check the commands and GoEdit those files 🫡
+
 ## Supported commands
 
 These are the commands which are currently supported.
