@@ -85,10 +85,33 @@ func scrollTextBuffer() {
 	}
 }
 
+func findFirstCharacter(from int) {
+	for i := from; i < len(text_buffer[current_row])-1; i++ {
+		if text_buffer[current_row][i] != ' ' && text_buffer[current_row][i] != '\t' {
+			current_col = i
+			break
+		}
+	}
+}
+
+func findLastCharacter(from int) {
+	for i := len(text_buffer[current_row]) - 1; i < from; i-- {
+		if text_buffer[current_row][i] != ' ' && text_buffer[current_row][i] != '\t' {
+			current_col = i
+			break
+		}
+	}
+}
+
 /*
 Moves the cursor to the desired direction
 
-direction can be = "up" | "down" | "left" | "right" | "home" | "end" | "pageUp" | "pageDown" | "top" | "bottom"
+direction can be =
+"up" | "down" | "left" | "right" |
+"home" | "end" | "beginning_of_line" |
+"pageUp" | "pageDown" |
+"top" | "bottom" |
+"next_word" | "prev_word"
 */
 func moveCursor(direction string, positions int) {
 	if cursor_changed {
@@ -98,25 +121,60 @@ func moveCursor(direction string, positions int) {
 	case "up":
 		cursor_changed = false
 		current_col = prev_col
+		if positions == 1 {
+			positions = 0
+		}
 		if current_row-positions >= 0 {
-			current_row -= positions
+			if positions == 0 {
+				current_row--
+			} else {
+				current_row -= positions
+			}
 		} else if current_row-positions < 0 {
 			current_row = 0
-			setErrorMessage("Careful the top line is not that far :)", 2)
+			if positions > 0 {
+				setErrorMessage("Careful the top line is not that far :)", 2)
+			}
+		}
+		if len(text_buffer[current_row])-1 <= 0 {
+			current_col = 0
+		} else if current_col > len(text_buffer[current_row])-1 {
+			current_col = len(text_buffer[current_row]) - 1
 		}
 	case "down":
 		cursor_changed = false
 		current_col = prev_col
-		if current_row+positions <= len(text_buffer)-1 {
-			current_row += positions
-		} else if current_row+positions > len(text_buffer)-1 {
+		if positions == 1 {
+			positions = 0
+		}
+		if current_row+positions < len(text_buffer)-1 {
+			if positions == 0 {
+				current_row++
+			} else {
+				current_row += positions
+			}
+		} else if current_row+positions >= len(text_buffer)-1 {
 			current_row = len(text_buffer) - 1
-			setErrorMessage("Careful the bottom line is not that far :)", 2)
+			if positions > 0 {
+				setErrorMessage("Careful the bottom line is not that far :)", 2)
+			}
+		}
+		if len(text_buffer[current_row])-1 <= 0 {
+			current_col = 0
+		} else if current_col > len(text_buffer[current_row])-1 {
+			current_col = len(text_buffer[current_row]) - 1
 		}
 	case "left":
 		cursor_changed = true
+		if positions == 1 {
+			positions = 0
+		}
 		if current_col != 0 {
-			current_col -= positions
+			if positions == 0 {
+				current_col--
+			} else {
+				current_col -= positions
+			}
 		} else if current_row-positions > 0 {
 			current_row--
 			current_col = len(text_buffer[current_row])
@@ -124,13 +182,24 @@ func moveCursor(direction string, positions int) {
 
 	case "right":
 		cursor_changed = true
+		if positions == 1 {
+			positions = 0
+		}
 		if current_col < len(text_buffer[current_row]) {
-			current_col += positions
+			if positions == 0 {
+				current_col++
+			} else {
+				current_col += positions
+			}
 		} else if current_row+positions < len(text_buffer)-1 {
 			current_row++
 			current_col = 0
 		}
 	case "home":
+		cursor_changed = true
+		current_col = 0
+		findFirstCharacter(current_col)
+	case "beginning_of_line":
 		cursor_changed = true
 		current_col = 0
 	case "end":
@@ -164,11 +233,44 @@ func moveCursor(direction string, positions int) {
 		} else {
 			current_col = 0
 		}
+	case "next_word":
+		cursor_changed = true
+		for i := 0; i < positions; i++ {
+			moveNextWord(current_col)
+		}
+	case "prev_word":
+		cursor_changed = true
+		for i := 0; i < positions; i++ {
+			movePrevWord(current_col)
+		}
 	default:
 		termbox.Close()
-		valid_directions := "\"up\", \"down\", \"left\", \"right\", \"left\", \"home\", \"end\", \"pageUp\", \"pageDown\", \"top\" or \"bottom\""
+		valid_directions := `
+		"up", "down", "left", "right",
+		"home", "end", "beginning_of_line",
+		"pageUp", "pageDown",
+		"top", "bottom"
+		"next_word", "prev_word"`
 		panic("\tThe direction: \"" + direction + "\" is not a defined direction\n\tValid directions: " + valid_directions + "\n\tPlease check your code.")
 	}
+}
+
+func moveNextWord(from int) {
+	for i := from; i < len(text_buffer[current_row])-1; i++ {
+		if text_buffer[current_row][i] == ' ' {
+			if i+1 == len(text_buffer[current_row])-1 {
+				current_col = len(text_buffer[current_row]) - 1
+				break
+			} else if text_buffer[current_row][i+1] != ' ' && text_buffer[current_row][i+1] != '\t' {
+				current_col = i + 1
+				break
+			}
+		}
+	}
+}
+
+func movePrevWord(from int) {
+	// TODO: move back to the beginning of the previous letter
 }
 
 func displayTextBuffer() {
@@ -317,6 +419,19 @@ func commandMotions(ch rune) {
 	case 'h':
 		moveCursor("left", command_positions)
 		command_positions = 1
+	case 'w':
+		moveCursor("next_word", command_positions)
+		command_positions = 1
+	case 'b':
+		moveCursor("prev_word", command_positions)
+		command_positions = 1
+	case '0':
+		moveCursor("beginning_of_line", 1)
+		command_positions = 1
+	case '$':
+		moveCursor("end", 1)
+		current_col--
+		command_positions = 1
 	}
 }
 
@@ -345,12 +460,15 @@ func processKeyPress() {
 	ch := key_event.Ch
 	if key == termbox.KeyEsc || key == termbox.KeyCtrlQ {
 		mode = 0
+		if current_col > 0 {
+			current_col--
+		}
 	} else if ch != 0 {
 		if mode == 1 {
 			insertCharacter(key_event)
 			modified = true
 		} else {
-			if isDigit(ch) {
+			if isDigit(ch) && (ch == '0' && str_positions.Len() > 0) {
 				_, err := str_positions.WriteString(string(ch))
 				if err == nil {
 					positions, err2 := strconv.Atoi(str_positions.String())
@@ -365,7 +483,7 @@ func processKeyPress() {
 					panic(err)
 				}
 			} else {
-				if ch == 'j' || ch == 'k' || ch == 'l' || ch == 'h' {
+				if ch == 'j' || ch == 'k' || ch == 'l' || ch == 'h' || ch == 'w' || ch == 'b' || ch == '0' || ch == '$' {
 					commandMotions(ch)
 					str_positions.Reset()
 				}
@@ -416,7 +534,7 @@ func processKeyPress() {
 					insertNewLine(true)
 					modified = true
 					mode = 1
-				case 'w':
+				case 'W':
 					writeFile(source_file)
 					if error_buffer != nil {
 						error_buffer = nil
